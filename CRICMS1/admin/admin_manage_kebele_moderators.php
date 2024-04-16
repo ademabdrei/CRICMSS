@@ -1,0 +1,283 @@
+<?php
+session_start();
+
+// Redirect to login page if user is not logged in as admin
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
+    header('Location: ../login.php');
+    exit;
+}
+
+// Include the database connection file
+require_once '../includes/db_connection.php';
+
+// Handle form submissions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Check if action is set
+    if (isset($_POST['action'])) {
+        $action = $_POST['action'];
+
+        switch ($action) {
+            case 'add_kebele_moderator':
+                $username = $_POST['username'] ?? '';
+                $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                $kebele_id = $_POST['kebele_id'] ?? '';
+
+                if (!empty($username) && !empty($password) && !empty($kebele_id)) {
+                    // Add kebele moderator logic here, insert into the 'kebeleModerator' table
+                    $insertModeratorQuery = "INSERT INTO kebeleModerator (username, password, kebele_id) VALUES (?, ?, ?)";
+                    $insertModeratorStmt = $conn->prepare($insertModeratorQuery);
+                    $insertModeratorStmt->bind_param('ssi', $username, $password, $kebele_id);
+                    $insertModeratorStmt->execute();
+
+                    header('Location: admin_manage_kebele_moderators.php');
+                    exit;
+                }
+                break;
+
+            case 'edit_kebele_moderator':
+                $username = $_POST['username'] ?? '';
+                $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+
+                $kebele_id = $_POST['kebele_id'] ?? '';
+                $moderator_id = $_POST['moderator_id'] ?? '';
+
+                if (!empty($username) && !empty($password) && !empty($kebele_id) && !empty($moderator_id)) {
+                    // Edit kebele moderator logic here, update the 'kebeleModerator' table
+                    $updateModeratorQuery = "UPDATE kebeleModerator SET username = ?, password = ?, kebele_id = ? WHERE kebeleModerator_id = ?";
+                    $updateModeratorStmt = $conn->prepare($updateModeratorQuery);
+                    $updateModeratorStmt->bind_param('ssii', $username, $password, $kebele_id, $moderator_id);
+                    $updateModeratorStmt->execute();
+
+                    header('Location: admin_manage_kebele_moderators.php');
+                    exit;
+                }
+                break;
+
+            case 'delete_kebele_moderator':
+                $moderator_id = $_POST['moderator_id'] ?? '';
+
+                if (!empty($moderator_id)) {
+                    // Delete kebele moderator logic here, delete from the 'kebeleModerator' table
+                    $deleteModeratorQuery = "DELETE FROM kebeleModerator WHERE kebeleModerator_id = ?";
+                    $deleteModeratorStmt = $conn->prepare($deleteModeratorQuery);
+                    $deleteModeratorStmt->bind_param('i', $moderator_id);
+                    $deleteModeratorStmt->execute();
+
+                    header('Location: admin_manage_kebele_moderators.php');
+                    exit;
+                }
+                break;
+
+            default:
+                // Invalid action
+                break;
+        }
+    }
+}
+
+// Fetch the list of kebele moderators and their assigned kebeles
+$getModeratorsQuery = "
+    SELECT km.kebeleModerator_id, km.username, k.kebele_name, c.city_name
+    FROM kebeleModerator km
+    LEFT JOIN kebele k ON km.kebele_id = k.kebele_id
+    LEFT JOIN city c ON k.city_id = c.city_id
+    ORDER BY km.username
+";
+$getModeratorsStmt = $conn->prepare($getModeratorsQuery);
+$getModeratorsStmt->execute();
+$moderatorsResult = $getModeratorsStmt->get_result();
+
+// Include the header file
+include '../includes/header.php';
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Manage Kebele Moderators</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+</head>
+
+<body>
+    <div class="container my-5">
+        <h1>Manage Kebele Moderators</h1>
+
+        <!-- Add Kebele Moderator Modal -->
+        <div class="modal fade" id="addModeratorModal" tabindex="-1" aria-labelledby="addModeratorModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addModeratorModalLabel">Add Kebele Moderator</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form action="<?php echo $_SERVER['PHP_SELF']; ?>" method="POST">
+                            <input type="hidden" name="action" value="add_kebele_moderator">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="kebele_id" class="form-label">Kebele</label>
+                                <select class="form-select" id="kebele_id" name="kebele_id" required>
+                                    <option value="" disabled selected>Select Kebele</option>
+                                    <?php
+                                    // Fetch kebeles from the database
+                                    $getKebelesQuery = "SELECT kebele_id, kebele_name FROM kebele";
+                                    $getKebelesStmt = $conn->prepare($getKebelesQuery);
+                                    $getKebelesStmt->execute();
+                                    $kebelesResult = $getKebelesStmt->get_result();
+
+                                    // Loop through kebeles and display as options
+                                    while ($kebele = $kebelesResult->fetch_assoc()) {
+                                        echo "<option value='" . $kebele['kebele_id'] . "'>" . $kebele['kebele_name'] . "</option>";
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Kebele Moderator</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Kebele Moderator Modal -->
+        <div class="modal fade" id="editModeratorModal" tabindex="-1" aria-labelledby="editModeratorModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editModeratorModalLabel">Edit Kebele Moderator</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form action="<?php echo $_SERVER['PHP_SELF']; ?>" method="POST">
+                            <input type="hidden" name="action" value="edit_kebele_moderator">
+                            <input type="hidden" name="moderator_id" id="edit_kebele_moderator_id">
+                            <div class="mb-3">
+                                <label for="edit_username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="edit_username" name="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="edit_password" name="password" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_kebele_id" class="form-label">Kebele</label>
+                                <select class="form-select" id="edit_kebele_id" name="kebele_id" required>
+                                    <option value="" disabled>Select Kebele</option>
+                                    <?php
+                                    // Fetch kebeles from the database and populate the options
+                                    $getKebelesQuery = "SELECT kebele_id, kebele_name FROM kebele";
+                                    $getKebelesStmt = $conn->prepare($getKebelesQuery);
+                                    $getKebelesStmt->execute();
+                                    $kebelesResult = $getKebelesStmt->get_result();
+                                    while ($kebele = $kebelesResult->fetch_assoc()) {
+                                        echo "<option value='" . $kebele['kebele_id'] . "'>" . $kebele['kebele_name'] . "</option>";
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Kebele Moderator Confirmation Modal -->
+        <div class="modal fade" id="deleteModeratorModal" tabindex="-1" aria-labelledby="deleteModeratorModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="deleteModeratorModalLabel">Delete Kebele Moderator</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete this kebele moderator?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <form id="deleteModeratorForm" action="<?php echo $_SERVER['PHP_SELF']; ?>" method="POST">
+                            <input type="hidden" name="action" value="delete_kebele_moderator">
+                            <input type="hidden" id="deleteModeratorId" name="moderator_id">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-danger">Delete</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Button trigger modals -->
+        <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModeratorModal">
+            Add Kebele Moderator
+        </button>
+
+        <h2>Kebele Moderators</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Kebele</th>
+                    <th>City</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while ($row = $moderatorsResult->fetch_assoc()) : ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['username']); ?></td>
+                        <td><?php echo htmlspecialchars($row['kebele_name']); ?></td>
+                        <td><?php echo htmlspecialchars($row['city_name']); ?></td>
+                        <td>
+                            <button type="button" class="btn btn-primary editBtn" data-bs-toggle="modal" data-bs-target="#editModeratorModal" data-id="<?php echo $row['kebeleModerator_id']; ?>" data-username="<?php echo htmlspecialchars($row['username']); ?>" data-kebele="<?php echo htmlspecialchars($row['kebele_name']); ?>" data-city="<?php echo htmlspecialchars($row['city_name']); ?>">Edit</button>
+                            <button type="button" class="btn btn-danger deleteBtn" data-bs-toggle="modal" data-bs-target="#deleteModeratorModal" data-id="<?php echo $row['kebeleModerator_id']; ?>">Delete</button>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // JavaScript code for handling edit and delete modals
+        document.addEventListener('DOMContentLoaded', function() {
+            // Edit Kebele Moderator Modal
+            var editModals = document.querySelectorAll('.editBtn');
+            editModals.forEach(function(editModal) {
+                editModal.addEventListener('click', function() {
+                    var moderatorId = this.getAttribute('data-id');
+                    var username = this.getAttribute('data-username');
+                    var kebele = this.getAttribute('data-kebele');
+                    var city = this.getAttribute('data-city');
+
+                    // Set values in the edit moderator modal
+                    document.getElementById('edit_kebele_moderator_id').value = moderatorId;
+                    document.getElementById('edit_username').value = username;
+                    document.getElementById('edit_kebele_id').value = kebele;
+                });
+            });
+
+            // Delete Kebele Moderator Modal
+            var deleteModals = document.querySelectorAll('.deleteBtn');
+            deleteModals.forEach(function(deleteModal) {
+                deleteModal.addEventListener('click', function() {
+                    var moderatorId = this.getAttribute('data-id');
+
+                    // Set moderator id in the delete moderator modal form
+                    document.getElementById('deleteModeratorId').value = moderatorId;
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
